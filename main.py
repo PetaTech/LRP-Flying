@@ -117,7 +117,7 @@ async def pine_entry(req: Request):
             "quantity":            qty,
             "orderType":           data.get("orderType") or data.get("params", {}).get("entryVersion", {}).get("orderType"),
             "timeInForce":         data.get("timeInForce") or data.get("params", {}).get("entryVersion", {}).get("timeInForce"),
-            "price":               data.get("price"),
+            **({"price": data["price"]} if data.get("orderType") != "market" and data.get("price") is not None else {}),
             "stopLoss":            {"type": "stop", "amount": initial_amt},
             "trailingStop":        True,
             "trailPriceType":      "Absolute",
