@@ -97,12 +97,11 @@ async def pine_entry(req: Request):
     if sid == "Tiger-Alt" and action in ("buy", "sell"):
         dbg("🛎️ Entering auto-trail branch for Tiger-Alt entry")
         try:
-            brackets = data.get("brackets") or data.get("params", {}).get("brackets")
-            br = brackets[0]
-            qty          = br.get("qty")
-            initial_amt  = br.get("stopLoss", {}).get("amount") or br.get("stopLoss", {}).get("stopPrice")
-            trail_amt    = br.get("trailAmount") or br.get("autoTrail", {}).get("stopLoss")
-            trigger_dist = br.get("triggerDistance") or br.get("autoTrail", {}).get("trigger")
+            qty          = data.get("quantity")
+            initial_amt  = data.get("stopLoss", {}).get("amount") or data.get("stopLoss", {}).get("stopPrice")
+            trail_amt    = data.get("extras", {}).get("autoTrail", {}).get("stopLoss")
+            trigger_dist = data.get("extras", {}).get("autoTrail", {}).get("trigger")
+            
             dbg(f"🛎️ Parsed bracket qty={qty}, initial_amt={initial_amt}, trail_amt={trail_amt}, trigger_dist={trigger_dist}")
         except Exception as e:
             dbg(f"❌ Error extracting bracket data: {e}")
