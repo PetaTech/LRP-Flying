@@ -126,26 +126,20 @@ async def pine_entry(req: Request):
                 "timeInForce":         data.get("timeInForce") or data.get("params", {}).get("entryVersion", {}).get("timeInForce") or "gtc"
             }
             
+            # Get stop loss and trailing parameters (used for both market and limit orders)
+            initial_amt = data.get("stopLoss", {}).get("amount") or data.get("stopLoss", {}).get("stopPrice")
+            trail_amt = (data.get("trailAmount") or 
+                        data.get("extras", {}).get("autoTrail", {}).get("stopLoss"))
+            trigger_dist = (data.get("triggerDistance") or 
+                           data.get("extras", {}).get("autoTrail", {}).get("trigger"))
+            
             # Handle market vs limit orders differently
             if order_type == "market":
-                dbg("🛎️ Market order detected - removing relative fields to avoid calculation errors")
-                # For market orders, don't include any relative fields that require a reference price
-                # This prevents TradersPost from trying to calculate stop/trail levels without a known entry price
+                dbg("🛎️ Market order detected - TradersPost will calculate stops from fill price")
+                # For market orders, TradersPost can still handle stops and trailing
+                # It will calculate stop levels based on the actual fill price
                 
-            else:
-                # For limit orders, we need a price
-                if not price:
-                    raise ValueError("Missing price - required for non-market orders")
-                tp_payload["price"] = price
-                
-                # Try to get stop loss and trailing parameters
-                initial_amt = data.get("stopLoss", {}).get("amount") or data.get("stopLoss", {}).get("stopPrice")
-                trail_amt = (data.get("trailAmount") or 
-                            data.get("extras", {}).get("autoTrail", {}).get("stopLoss"))
-                trigger_dist = (data.get("triggerDistance") or 
-                               data.get("extras", {}).get("autoTrail", {}).get("trigger"))
-                
-                # Only add trailing stop features if we have all required parameters
+                # Add trailing stop features if we have all required parameters
                 if initial_amt and trail_amt and trigger_dist:
                     tp_payload.update({
                         "stopLoss":            {"type": "stop", "amount": initial_amt},
@@ -154,13 +148,28 @@ async def pine_entry(req: Request):
                         "trailAmount":         trail_amt,
                         "triggerDistance":     trigger_dist
                     })
-                    dbg(f"🛎️ Added trailing stop: initial_amt={initial_amt}, trail_amt={trail_amt}, trigger_dist={trigger_dist}")
+                    dbg(f"🛎️ Added trailing stop to market order: initial_amt={initial_amt}, trail_amt={trail_amt}, trigger_dist={trigger_dist}")
+                else:
+                    dbg("🛎️ Missing trailing stop parameters - sending as simple market order")
+                    
+            else:
+                # For limit orders, we need a price
+                if not price:
+                    raise ValueError("Missing price - required for non-market orders")
+                tp_payload["price"] = price
+                
+                # Add trailing stop features if we have all required parameters
+                if initial_amt and trail_amt and trigger_dist:
+                    tp_payload.update({
+                        "stopLoss":            {"type": "stop", "amount": initial_amt},
+                        "trailingStop":        True,
+                        "trailPriceType":      "Absolute",
+                        "trailAmount":         trail_amt,
+                        "triggerDistance":     trigger_dist
+                    })
+                    dbg(f"🛎️ Added trailing stop to limit order: initial_amt={initial_amt}, trail_amt={trail_amt}, trigger_dist={trigger_dist}")
                 else:
                     dbg("🛎️ Missing trailing stop parameters - sending as simple limit order")
-            
-            # Only add price if we have one and it's not a market order
-            if price and order_type != "market":
-                tp_payload["price"] = price
             
             dbg(f"→ TradersPost payload: {tp_payload}")
             await send_alt_ws(tp_payload)
